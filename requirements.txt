@@ -1,0 +1,14 @@
+apache-airflow
+feast
+mlflow
+lightgbm
+fastapi
+uvicorn
+boto3
+pandas
+geopandas
+requests
+evidently
+gunicorn
+python-dotenv
+pytest
