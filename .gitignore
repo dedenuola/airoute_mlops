@@ -1,3 +1,15 @@
+# ───── raw & processed data ─────
+data/bronze/
+data/silver/
+data/metadata/
+
+# optional: logs and large artifacts
+logs/
+
+#sample files
+dags/defra_sos_getdataavailability.xml
+dags/defra_sos_capabilities.xml
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
