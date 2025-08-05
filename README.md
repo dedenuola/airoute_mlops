@@ -62,7 +62,7 @@ I’m building **RouteAQ**, a one-hour-ahead (PM₂.₅,NO₂, O₃) forecasting
 
 ├─ train_routeaq_pm25.py # Script/notebook for full train → log → register
  workflow
- 
+
 └─ README.md # ← you are here
 
 
@@ -104,31 +104,30 @@ Prediction:
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{"site_id":"ABD7","timestamp":"2025-08-05T14:00:00Z"}'
-🔭 My Next Steps
-Integration Tests
+
+## 🔭 My Next Steps
+**Integration Tests**
 
 Write a simple pytest or bash script to automatically hit /predict and assert a valid response.
 
-Model Monitoring
+**Model Monitoring**
 
-Integrate Evidently in an Airflow DAG to generate drift & performance reports
+**Integrate Evidently in an Airflow DAG to generate drift & performance reports**
 
-Configure alerts (e.g. email or Slack) on metric degradation.
+**Cloud Deployment**
 
-Cloud Deployment
+**Push routeaq-api image to AWS ECR**
 
-Push routeaq-api image to AWS ECR
+**Deploy Airflow & MLflow on AWS**
 
-Deploy Airflow & MLflow on AWS (ECS, EKS, or Cloud Composer + managed services)
+**Use S3 for Feast offline store & RDS for online store.**
 
-Use S3 for Feast offline store & RDS for online store.
+**CI/CD & Best Practices**
 
-CI/CD & Best Practices
+**Add GitHub Actions for linting (flake8), testing, and building Docker images**
 
-Add GitHub Actions for linting (flake8), testing, and building Docker images
+**Set up pre-commit hooks and a Makefile for common commands**
 
-Set up pre-commit hooks and a Makefile for common commands
-
-Document environment variables and versions in requirements.txt or environment.yml
+**Complete Documentation of environment variables and versions in requirements.txt or environment.yml**
 
 I’m excited to keep refining RouteAQ—next up, automated tests and basic monitoring so I can ensure this forecast service runs smoothly in production!
