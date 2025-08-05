@@ -31,21 +31,38 @@ I’m building **RouteAQ**, a one-hour-ahead (PM₂.₅,NO₂, O₃) forecasting
 ## 🗂️ Project Structure
 
 ├─ dags/ # Airflow DAG definitions (ingest_defra, ingest_metoffice)
+
 ├─ data/
+
 │ ├─ bronze/ # Raw JSON/CSV from DEFRA & Met Office
+
 │ └─ silver/ # Parquet tables: pollutant_hourly, weather_hourly, joined
+
 ├─ feature_repo/ # Feast feature store definitions
+
 │ ├─ feature_store.yaml
+
 │ └─ aq_feature_view.py
+
 ├─ mlruns/ # MLflow artifact root (models + run logs)
+
 ├─ mlflow.db # MLflow SQLite backend
+
 ├─ services/
+
 │ └─ api/
+
 │ ├─ main.py # FastAPI application
+
 │ ├─ requirements.txt
+
 │ └─ Dockerfile
+
 ├─ docker-compose.yml # Dev stack: Postgres, Airflow, MLflow, API
-├─ train_routeaq_pm25.py # Script/notebook for full train → log → register workflow
+
+├─ train_routeaq_pm25.py # Script/notebook for full train → log → register
+ workflow
+ 
 └─ README.md # ← you are here
 
 
