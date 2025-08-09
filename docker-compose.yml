@@ -70,40 +70,59 @@ services:
       "
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.11.1
+    build:
+      context: .
+      dockerfile: mlflow.Dockerfile
     entrypoint: ["mlflow"]
     command:
-      - "server"
-      - "--backend-store-uri"
-      - "sqlite:////app/mlflow.db"
-      - "--default-artifact-root"
-      - "/mlruns"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
+      - server
+      - --backend-store-uri
+      - postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      - --default-artifact-root
+      - /mlflow_artifacts
+      - --serve-artifacts
+      - --host
+      - 0.0.0.0
+      - --port
       - "5000"
+    env_file:
+      - .env
     ports:
       - "5000:5000"
+    depends_on:
+      - postgres
     volumes:
-      - ./mlflow_data:/app         # stores mlflow.db here
-      - ./mlruns:/mlruns           # stores artifacts
+      - mlflow-artifacts:/mlflow_artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/2.0/mlflow/experiments/list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
+  
 
-
+  
   api:
     build:
       context: ./services/api
       dockerfile: Dockerfile
     volumes:
       - ./feature_repo:/app/feature_repo
+      - type: bind
+        source: /workspaces/airoute_mlops/airoute_mlops/data
+        target: /workspaces/airoute_mlops/airoute_mlops/data
+        read_only: true
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - FEAST_REPO_PATH=/app/feature_repo
+      - MODEL_URI=models:/routeaq_pm25@prod
     ports:
       - "8000:8000"
     depends_on:
       - webserver
       - mlflow
 
+
 volumes:
   postgres-db-volume:
+  mlflow-artifacts:
