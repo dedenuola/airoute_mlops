@@ -236,3 +236,18 @@ __pycache__/
 *.parquet
 *.feather
 *.csv
+
+# --- Project ignores ---
+__pycache__/
+.ipynb_checkpoints/
+.env
+airoute_venv/
+
+# Data & artifacts
+/data/
+mlruns/
+logs/
+feature_repo/data/
+*.parquet
+*.feather
+*.csv
