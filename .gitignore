@@ -10,6 +10,10 @@ logs/
 dags/defra_sos_getdataavailability.xml
 dags/defra_sos_capabilities.xml
 
+#scripts
+test_api_met.py
+scripts/bronze_to_silver_pollutant.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -222,3 +226,13 @@ airoute_venv/
 .env
 *.pyc
 __pycache__/
+
+# Runtime & large artifacts
+/data/
+mlruns/
+models/
+.ipynb_checkpoints/
+__pycache__/
+*.parquet
+*.feather
+*.csv
