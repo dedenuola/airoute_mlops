@@ -6,9 +6,17 @@ logs/
 feature_repo/data/
 mlruns/
 models/
+
+# Big local data/artifacts
 *.parquet
 *.feather
 *.csv
+mlflow_artifacts/
+monitoring/predictions/*.csv
+
+# AWS installers / temp
+aws/
+awscliv2.zip
 
 # Bytecode & cache
 __pycache__/
@@ -40,16 +48,3 @@ htmlcov/
 
 # Other generated files
 *.log
-# Local MLflow artifacts (we use S3 in cloud)
-mlflow_artifacts/
-
-# Prediction logs (generated at runtime)
-monitoring/predictions/*.csv
-
-# AWS installers / temp
-aws/
-awscliv2.zip
-mlflow_artifacts/
-monitoring/predictions/*.csv
-aws/
-awscliv2.zip
