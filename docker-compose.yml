@@ -116,7 +116,7 @@ services:
     depends_on:
       - postgres
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/2.0/mlflow/experiments/list"]
+      test: ["CMD-SHELL", "python - <<'PY'\nimport requests,sys;sys.exit(0 if requests.get('http://localhost:5000/api/2.0/mlflow/experiments/list',timeout=3).ok else 1)\nPY"]
       interval: 10s
       timeout: 5s
       retries: 10
