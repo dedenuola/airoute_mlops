@@ -100,7 +100,6 @@ services:
       - --backend-store-uri
       - postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
       - --default-artifact-root
-      - /mlflow_artifacts     
       - s3://routeaq-mlflow-artifacts/mlruns
       - --serve-artifacts
       - --host
