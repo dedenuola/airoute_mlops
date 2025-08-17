@@ -1,23 +1,18 @@
-feast==0.45.0
-protobuf==4.25.3          #protobuf 4.x to satisfy mlflow 2.11.1
-googleapis-common-protos>=1.63.0
-grpcio>=1.62.0
-
+feast==0.47.0
 mlflow==2.11.1
 lightgbm==4.6.0
 numpy==1.26.4
 scipy==1.16.1
+pyarrow==15.0.2
+protobuf==4.25.3
+googleapis-common-protos>=1.63.0
+grpcio>=1.62.0
+packaging<24
 cffi==1.17.1
 mmh3==5.1.0
-pyarrow==15.0.2
-packaging<24
-
-# xarray==2024.6.0
-# packaging==23.2 
 
 fastapi
-uvicorn
+uvicorn[standard]
 pandas
 requests
 python-dotenv
-lightgbm
