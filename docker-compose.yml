@@ -13,56 +13,80 @@ services:
       - postgres-db-volume:/var/lib/postgresql/data
 
   webserver:
-    image: apache/airflow:2.8.1
+    image: apache/airflow:2.8.1-python3.10
     depends_on:
       - postgres
     env_file:
       - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
+      # AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
+      ROUTEAQ_JOINED_PATH: s3://routeaq-feast-offline/silver/joined/
+      PIP_ADDITIONAL_REQUIREMENTS: >-
+        feast==0.47.0
+        s3fs
+        boto3
+        mlflow==2.11.1
+        evidently==0.7.11
     volumes:
       - ./dags:/opt/airflow/dags
       - ./data:/opt/airflow/data
+      - ./feature_repo:/opt/airflow/feature_repo
+      - ./monitoring:/opt/airflow/monitoring
     ports:
       - "8080:8080"
     command: webserver
 
   scheduler:
-    image: apache/airflow:2.8.1
+    image: apache/airflow:2.8.1-python3.10
     depends_on:
       - webserver
     env_file:
       - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
+      # AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
+      ROUTEAQ_JOINED_PATH: s3://routeaq-feast-offline/silver/joined/
+
+      _PIP_ADDITIONAL_REQUIREMENTS: >-
+        feast==0.47.0
+        s3fs
+        boto3
+        mlflow==2.11.1
+        evidently==0.7.11
     volumes:
       - ./dags:/opt/airflow/dags
       - ./data:/opt/airflow/data
+      - ./feature_repo:/opt/airflow/feature_repo
+      - ./monitoring:/opt/airflow/monitoring
     command: scheduler
 
   airflow-init:
-    image: apache/airflow:2.8.1
+    image: apache/airflow:2.8.1-python3.10
     depends_on:
       - postgres
     env_file:
       - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
+      # AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./data:/opt/airflow/data
+      - ./feature_repo:/opt/airflow/feature_repo
+      - ./monitoring:/opt/airflow/monitoring
     entrypoint: >
       /bin/bash -c "
       airflow db migrate &&
@@ -79,7 +103,8 @@ services:
       - --backend-store-uri
       - postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
       - --default-artifact-root
-      - /mlflow_artifacts
+      - /mlflow_artifacts     
+      # - s3://routeaq-mlflow-artifacts/mlruns
       - --serve-artifacts
       - --host
       - 0.0.0.0
@@ -87,12 +112,15 @@ services:
       - "5000"
     env_file:
       - .env
+    environment:
+      - AWS_REGION=eu-west-2
+      - AWS_DEFAULT_REGION=eu-west-2
     ports:
       - "5000:5000"
     depends_on:
       - postgres
     volumes:
-      - mlflow-artifacts:/mlflow_artifacts
+      - ./mlflow_artifacts:/mlflow_artifacts
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/2.0/mlflow/experiments/list"]
       interval: 10s
@@ -108,14 +136,19 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./feature_repo:/app/feature_repo
-      - type: bind
-        source: /workspaces/airoute_mlops/airoute_mlops/data
-        target: /workspaces/airoute_mlops/airoute_mlops/data
-        read_only: true
+      - ./monitoring:/app/monitoring
+      # - type: bind
+      #   source: /workspaces/airoute_mlops/airoute_mlops/data
+      #   target: /workspaces/airoute_mlops/airoute_mlops/data
+      #   read_only: true
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - FEAST_REPO_PATH=/app/feature_repo
-      - MODEL_URI=models:/routeaq_pm25@prod
+      - ROUTEAQ_JOINED_PATH=s3://routeaq-feast-offline/silver/joined/
+      - MODEL_URI=models:/routeaq_pm25/Production
+      # - ROUTEAQ_JOINED_PATH=s3://routeaq-feast-offline/silver/joined/hourly_joined_2025_from_28jul.parquet
+      # - MODEL_URI=models:/routeaq_pm25@prod
+      # - MODEL_URI=runs:/c4298123a9024955a33d6f901ab6599c/model_pm25
     ports:
       - "8000:8000"
     depends_on:

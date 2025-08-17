@@ -40,3 +40,16 @@ htmlcov/
 
 # Other generated files
 *.log
+# Local MLflow artifacts (we use S3 in cloud)
+mlflow_artifacts/
+
+# Prediction logs (generated at runtime)
+monitoring/predictions/*.csv
+
+# AWS installers / temp
+aws/
+awscliv2.zip
+mlflow_artifacts/
+monitoring/predictions/*.csv
+aws/
+awscliv2.zip
