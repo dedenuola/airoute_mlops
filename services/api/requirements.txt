@@ -16,3 +16,4 @@ uvicorn[standard]
 pandas
 requests
 python-dotenv
+boto3
