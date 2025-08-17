@@ -21,11 +21,10 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
-      # AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
-      ROUTEAQ_JOINED_PATH: s3://routeaq-feast-offline/silver/joined/
+      ROUTEAQ_JOINED_PATH: s3://routeaq-feast-offline/silver/joined/*.parquet
       PIP_ADDITIONAL_REQUIREMENTS: >-
         feast==0.47.0
         s3fs
@@ -50,11 +49,10 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
-      # AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
-      ROUTEAQ_JOINED_PATH: s3://routeaq-feast-offline/silver/joined/
+      ROUTEAQ_JOINED_PATH: s3://routeaq-feast-offline/silver/joined/*.parquet
 
       _PIP_ADDITIONAL_REQUIREMENTS: >-
         feast==0.47.0
@@ -78,7 +76,6 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
-      # AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
@@ -124,10 +121,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-
-  
-
-  
+ 
   api:
     build:
       context: ./services/api
@@ -135,18 +129,11 @@ services:
     volumes:
       - ./feature_repo:/app/feature_repo
       - ./monitoring:/app/monitoring
-      # - type: bind
-      #   source: /workspaces/airoute_mlops/airoute_mlops/data
-      #   target: /workspaces/airoute_mlops/airoute_mlops/data
-      #   read_only: true
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - FEAST_REPO_PATH=/app/feature_repo
-      - ROUTEAQ_JOINED_PATH=s3://routeaq-feast-offline/silver/joined/
+      - ROUTEAQ_JOINED_PATH=s3://routeaq-feast-offline/silver/joined/*.parquet
       - MODEL_URI=models:/routeaq_pm25/Production
-      # - ROUTEAQ_JOINED_PATH=s3://routeaq-feast-offline/silver/joined/hourly_joined_2025_from_28jul.parquet
-      # - MODEL_URI=models:/routeaq_pm25@prod
-      # - MODEL_URI=runs:/c4298123a9024955a33d6f901ab6599c/model_pm25
     ports:
       - "8000:8000"
     depends_on:
