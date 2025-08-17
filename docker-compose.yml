@@ -54,7 +54,7 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
       ROUTEAQ_JOINED_PATH: s3://routeaq-feast-offline/silver/joined/*.parquet
 
-      _PIP_ADDITIONAL_REQUIREMENTS: >-
+      PIP_ADDITIONAL_REQUIREMENTS: >-
         feast==0.47.0
         s3fs
         boto3
@@ -100,7 +100,6 @@ services:
       - --backend-store-uri
       - postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
       - --default-artifact-root
-      - /mlflow_artifacts     
       - s3://routeaq-mlflow-artifacts/mlruns
       - --serve-artifacts
       - --host
