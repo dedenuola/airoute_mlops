@@ -104,7 +104,7 @@ services:
       - postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
       - --default-artifact-root
       - /mlflow_artifacts     
-      # - s3://routeaq-mlflow-artifacts/mlruns
+      - s3://routeaq-mlflow-artifacts/mlruns
       - --serve-artifacts
       - --host
       - 0.0.0.0
@@ -119,8 +119,6 @@ services:
       - "5000:5000"
     depends_on:
       - postgres
-    volumes:
-      - ./mlflow_artifacts:/mlflow_artifacts
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/2.0/mlflow/experiments/list"]
       interval: 10s
