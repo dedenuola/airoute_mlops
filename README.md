@@ -1,133 +1,208 @@
-# RouteAQ – End-to-End Air-Quality Forecasting MLOps Pipeline
+# RouteAQ — cloud-hosted MLOps slice for one-hour-ahead PM₂.₅ forecasts
 
-I’m building **RouteAQ**, a one-hour-ahead (PM₂.₅,NO₂, O₃) forecasting service for UK postcodes. At a high level, I’ve completed:
+## Problem we’re solving
 
-1. **Data Ingestion**  
-   - **DEFRA AURN** hourly pollutant CSVs (PM₂.₅, NO₂, O₃) landed daily via Airflow DAGs  
-   - **Met Office** hourly forecast JSONs (temperature, wind, humidity) landed via a second Airflow task
+Air quality varies block-by-block and hour-by-hour. People with respiratory conditions, cyclists, and city ops teams all need short-horizon forecasts to plan routes and reduce exposure. Public data exists (pollutants from DEFRA AURN and weather from the Met Office), but turning that into a **reliable, cloud-hosted prediction service** is the hard part.
 
-2. **Feature Store**  
-   - Defined a Feast repo with `feature_store.yaml` (local offline store & SQLite online store)  
-   - Created a `FeatureView` (`aq_hourly`) that exposes t–1 pollutant lags + latest weather
-
-3. **Data Joining & Silver Tables**  
-   - Extracted raw JSON & CSV into Parquet in `/data/silver`  
-   - Joined pollutant + weather features on `(site_id, timestamp)` to produce a single training table
-
-4. **Model Training & Registry**  
-   - Trained a LightGBM regressor on June–July data  
-   - Logged parameters, metrics, and **model signature + input example** to MLflow  
-   - Registered `routeaq_pm25` model (versions 1 & 2) in a local MLflow server
-
-5. **Model Serving**  
-   - Built a FastAPI app (`/services/api/main.py`) that:  
-     - Fetches online features from Feast  
-     - Loads the registered MLflow model  
-     - Exposes `POST /predict` for real-time PM₂.₅ forecasts  
-   - Dockerized the API and orchestrated it alongside Airflow, Postgres, and MLflow via Docker-Compose
+**RouteAQ** is a minimal, production-shaped solution: it ingests open data, builds features, trains a model, registers it in MLflow, and serves real-time predictions on AWS EC2 behind a simple HTTP API. The first target is **PM₂.₅** (fine particulates) one hour ahead. NO₂ and O₃ use the same pattern and are planned next.
 
 ---
 
-## 🗂️ Project Structure
+## What’s working now (MVP)
 
-├─ dags/ # Airflow DAG definitions (ingest_defra, ingest_metoffice)
+- ✅ **Serving on EC2** with Docker Compose (`FastAPI` on port **8000**).
+- ✅ **Model registry with MLflow** (Postgres backend, **artifacts in S3**).
+- ✅ **Features via Feast 0.47** (SQLite online store in-container) **or** robust **S3 Parquet fallback** if Feast isn’t materialized.
+- ✅ **PM₂.₅ model** (LightGBM) pulled from MLflow Model Registry at request time.
+- ✅ **Prediction logs** written as CSV (quick demo artifact you can plot later).
 
-├─ data/
+> This is deliberately a thin, end-to-end vertical slice. It’s enough to review, demo live, and extend.
 
-│ ├─ bronze/ # Raw JSON/CSV from DEFRA & Met Office
+---
 
-│ └─ silver/ # Parquet tables: pollutant_hourly, weather_hourly, joined
+## Architecture (accurate to this repo)
 
-├─ feature_repo/ # Feast feature store definitions
+```mermaid
+flowchart LR
+  subgraph Ingestion & Silver
+    A[Airflow DAGs\n(DEFRA AURN hourly, Met Office)] --> B[Bronze]
+    B --> C[Transform -> Silver Parquet]
+    C --> D[Joined hourly features\ns3://routeaq-feast-offline/silver/joined/*.parquet]
+  end
 
-│ ├─ feature_store.yaml
+  subgraph Feature Store
+    D --> E[Feast FeatureView: aq_hourly\n(pm25_t_1, no2_t_1, o3_t_1, temp, wind, humidity)]
+    E --> F[(Feast Online Store\nSQLite in container)]
+  end
 
-│ └─ aq_feature_view.py
+  subgraph Model Ops
+    G[Train LightGBM PM2.5] --> H[MLflow Run]
+    H --> I[MLflow Model Registry: routeaq_pm25\nBackend=Postgres | Artifacts=S3]
+  end
 
-├─ mlruns/ # MLflow artifact root (models + run logs)
+  subgraph Serving (FastAPI on 8000)
+    J[/POST /predict/] -->|load model| I
+    J -->|get_online_features| F
+    J -. fallback .-> D
+    J --> K[CSV prediction logs\n/monitoring/predictions/preds_YYYY-MM-DD.csv]
+  end
+```
 
-├─ mlflow.db # MLflow SQLite backend
+---
 
+## Live demo (EC2)
+
+On the EC2 instance:
+
+```bash
+cd ~/airoute_mlops
+git pull --rebase
+
+# Start/refresh services
+docker compose up -d postgres mlflow
+docker compose up -d webserver scheduler
+docker compose up -d --build api
+
+# Health
+curl -s http://localhost:8000/health | jq .
+
+# Predict (one hour ahead sample)
+curl -s -X POST http://localhost:8000/predict   -H "Content-Type: application/json"   -d '{"site_id":"CLL2","timestamp":"2025-08-01T10:00:00Z"}'
+# -> {"site_id":"CLL2","timestamp":"2025-08-01T10:00:00Z","pm25_pred":<float>,"source":"feast|parquet"}
+
+# Confirm it logged
+tail -n +1 monitoring/predictions/preds_$(date -u +%F).csv
+```
+
+---
+
+## Operational sanity checks (quick checklist)
+
+- `GET /health` returns `"status": "ok"` and shows `s3_sample` with at least one match.
+- The S3 path in `/health` (`joined_path`) **matches** your bucket/glob:
+  `s3://routeaq-feast-offline/silver/joined/*.parquet`.
+- MLflow UI reachable on **:5000**  
+  - Open SG to your IP **or** tunnel:  
+    `ssh -i KEY.pem -N -L 5000:localhost:5000 ec2-user@EC2_PUBLIC_IP` → visit http://localhost:5000
+- (Optional) a daily Airflow DAG writes an Evidently report to S3. A placeholder DAG is included; enable it when ready.
+
+---
+
+## Deploying on AWS (minimal)
+
+**Compute:** EC2 t3.large (Amazon Linux or Ubuntu), with Docker & Docker Compose v2.  
+**S3 buckets:**
+- `routeaq-feast-offline` → `silver/joined/*.parquet`
+- `routeaq-mlflow-artifacts` → MLflow artifacts (e.g. `mlruns/<exp>/<run>/...`)
+
+**IAM role** attached to the EC2 instance profile:
+- `s3:ListBucket` on both buckets
+- `s3:GetObject/PutObject/DeleteObject` on `arn:aws:s3:::routeaq-mlflow-artifacts/*` and `arn:aws:s3:::routeaq-feast-offline/*`
+- (Optional) ECR push/pull + CloudWatch Logs basic
+
+**Security group (demo):** inbound 22, 8000, 8080, 5000 from your IP (tighten later).
+
+---
+
+## Local development (optional)
+
+```bash
+# Infra
+docker compose up -d postgres mlflow
+docker compose up -d airflow-init
+docker compose up -d webserver scheduler
+
+# API
+docker compose up -d --build api
+
+# Test
+curl -s http://localhost:8000/health | jq .
+```
+
+> If you want Feast online features locally, materialize once:
+> `docker compose exec webserver bash -lc 'cd /opt/airflow/feature_repo && feast apply && feast materialize "2025-07-01T00:00:00Z" "$(date -u +%Y-%m-%dT%H:%M:%S)"'`
+
+---
+
+## API
+
+- `GET /health` → shows basic environment + quick S3 check (one matched file if available).
+- `POST /predict`
+  ```json
+  {
+    "site_id": "CLL2",
+    "timestamp": "2025-08-01T10:00:00Z"
+  }
+  ```
+  Response:
+  ```json
+  {
+    "site_id": "CLL2",
+    "timestamp": "2025-08-01T10:00:00Z",
+    "pm25_pred": 3.94,
+    "source": "feast"  // or "parquet" if Feast fallback was used
+  }
+  ```
+
+---
+
+## What’s in the repo
+
+```
+.
+├─ dags/                         # Airflow DAGs (ingestion/monitoring; placeholders included)
+├─ feature_repo/                 # Feast repo (aq_feature_view.py, feature_store.yaml)
 ├─ services/
+│  └─ api/
+│     ├─ main.py                 # FastAPI app (Feast first, S3 Parquet fallback)
+│     ├─ requirements.txt
+│     └─ Dockerfile
+├─ mlflow.Dockerfile             # MLflow server image
+├─ docker-compose.yml            # Postgres, MLflow, Airflow, API
+└─ tests/
+   └─ smoke_test.sh              # Curl health & predict; exits non-zero if broken
+```
 
-│ └─ api/
-
-│ ├─ main.py # FastAPI application
-
-│ ├─ requirements.txt
-
-│ └─ Dockerfile
-
-├─ docker-compose.yml # Dev stack: Postgres, Airflow, MLflow, API
-
-├─ train_routeaq_pm25.py # Script/notebook for full train → log → register
- workflow
-
-└─ README.md # ← you are here
-
+**Not checked in** (see `.gitignore`): raw data, large parquet, MLflow artifacts, prediction logs, secrets (`.env`).
 
 ---
 
-## 🚀 How to Run Locally
+## Data & privacy
 
-1. **Prerequisites**  
-   - Docker & Docker-Compose  
-   - Python 3.10+/venv  
+- **DEFRA AURN** is open data; still keep raw drops out of Git.
+- **Met Office** datasets have specific license/usage terms. Store credentials in `.env` (gitignored) or in AWS runtime env. Do **not** commit raw downloads.
+- Keep S3 buckets private; expose only the API and the needed web UIs via your IP.
 
-2. **Initialize Airflow & Postgres**  
-   docker-compose up -d postgres webserver scheduler airflow-init
-Run MLflow
+---
 
-Option A (quick) in your venv:
+## Roadmap (after MVP)
 
-mlflow server \
-  --backend-store-uri sqlite:///mlflow.db \
-  --default-artifact-root ./mlruns \
-  --host 0.0.0.0 --port 5000
-Option B (Docker):
-docker-compose up -d mlflow
-Trigger Ingestion
+- Add **NO₂** and **O₃** models:
+  - replicate the PM₂.₅ training/logging flow
+  - register `routeaq_no2`, `routeaq_o3` in MLflow
+  - Option A: separate endpoints; Option B: `/predict?target=no2|o3|pm25`
+- Monitoring:
+  - daily Evidently report from the latest `preds_*.csv` (Airflow DAG → HTML/JSON into S3)
+  - simple Airflow email/Slack alert if drift detected
+- CI/CD:
+  - GitHub Action to run `tests/smoke_test.sh` on PRs
+  - build & push images (later ECR)
 
-Airflow will backfill DEFRA & Met Office DAGs from start_date=2025-06-01
+---
 
-Check /opt/airflow/data/bronze inside the webserver container
+## Troubleshooting
 
-Train & Register Model
-python train_routeaq_pm25.py
-Confirm runs & model versions in MLflow UI at http://localhost:5000
+- **/predict says “Parquet read failed …”**  
+  Check `/health` → `s3_sample` must show at least one file. Verify `ROUTEAQ_JOINED_PATH` in `docker-compose.yml` and that the IAM role includes List/Get on that bucket/prefix.
 
-Start the API
-docker-compose up -d api
-Health check: curl http://localhost:8000/health → {"status":"ok"}
+- **Feast returns Nones**  
+  You didn’t materialize (fine — fallback covers you). To use Feast online store, run `feast apply && feast materialize …` inside the Airflow container.
 
-Prediction:
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"site_id":"ABD7","timestamp":"2025-08-05T14:00:00Z"}'
+- **MLflow “unhealthy”**  
+  Healthcheck hits `/api/2.0/mlflow/experiments/list`. Ensure Postgres is up and `--default-artifact-root` points to your S3 bucket.
 
-## 🔭 My Next Steps
-**Integration Tests**
+---
 
-Write a simple pytest or bash script to automatically hit /predict and assert a valid response.
+## License
 
-**Model Monitoring**
-
-**Integrate Evidently in an Airflow DAG to generate drift & performance reports**
-
-**Cloud Deployment**
-
-**Push routeaq-api image to AWS ECR**
-
-**Deploy Airflow & MLflow on AWS**
-
-**Use S3 for Feast offline store & RDS for online store.**
-
-**CI/CD & Best Practices**
-
-**Add GitHub Actions for linting (flake8), testing, and building Docker images**
-
-**Set up pre-commit hooks and a Makefile for common commands**
-
-**Complete Documentation of environment variables and versions in requirements.txt or environment.yml**
-
-I’m excited to keep refining RouteAQ—next up, automated tests and basic monitoring so I can ensure this forecast service runs smoothly in production!
+MIT
