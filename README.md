@@ -25,18 +25,18 @@ Air quality varies block-by-block and hour-by-hour. People with respiratory cond
 ```mermaid
 flowchart LR
   %% Ingestion (Bronze -> Silver on S3)
-  subgraph ING[Ingestion & Silver]
-    A[Airflow DAGs<br/>DEFRA AURN hourly, Met Office] --> B[S3 Silver Parquet<br/>s3://routeaq-feast-offline/silver/...]
+  subgraph ING["Ingestion & Silver"]
+    A["Airflow DAGs\nDEFRA AURN hourly, Met Office"] --> B["S3 Silver Parquet\ns3://routeaq-feast-offline/silver/..."]
   end
 
   %% Features (Feast)
-  subgraph FEAST[Feature Store]
-    C[Feast FileSource<br/>(S3 *.parquet glob)] --> D[Online store (SQLite)<br/>/opt/airflow/feature_repo/data/online_store]
+  subgraph FEAST["Feature Store"]
+    C["Feast FileSource\n(S3 *.parquet glob)"] --> D["Online store (SQLite)\n/opt/airflow/feature_repo/data/online_store"]
   end
 
   %% Model & Serving
-  subgraph SERVE[Model & Serving]
-    E[MLflow Registry<br/>routeaq_pm25 @ prod] --> F[FastAPI API<br/>/predict]
+  subgraph SERVE["Model & Serving"]
+    E["MLflow Registry\nrouteaq_pm25 @ prod"] --> F["FastAPI API\n/predict"]
   end
 
   %% Edges between groups
