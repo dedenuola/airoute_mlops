@@ -79,7 +79,6 @@ flowchart LR
   sg  -.-> ec2
 
 ```
-
 ---
 
 ## Live demo (EC2)
