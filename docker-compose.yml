@@ -146,7 +146,6 @@ services:
       - webserver
       - mlflow
 
-
 volumes:
   postgres-db-volume:
   mlflow-artifacts:
