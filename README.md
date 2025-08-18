@@ -286,7 +286,7 @@ curl -s http://localhost:8000/health | jq .
   Healthcheck hits `/api/2.0/mlflow/experiments/list`. Ensure Postgres is up and `--default-artifact-root` points to your S3 bucket.
 
 ---
-FAQ
+## FAQ
 
 Q: Does this predict into the future (e.g. next year)?
 A: No. The model predicts only for timestamps that already have features ingested (weather + lagged pollutants). It is not a forecasting system. When the Airflow DAG is actively running and materializing features, the API will return valid predictions.
