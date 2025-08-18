@@ -1,6 +1,7 @@
 # RouteAQ — cloud-hosted MLOps slice for one-hour-ahead PM₂.₅ forecasts
 
 ## Problem we’re solving
+Air pollution is a silent but major health risk. People with asthma, parents planning school runs, and city operators need short-term forecasts of pollutant levels they can trust. RouteAQ turns open government data into a cloud-hosted prediction service, starting with fine particulates (PM₂.₅) and extensible to NO₂ and O₃.
 
 Air quality varies block-by-block and hour-by-hour. People with respiratory conditions, cyclists, and city ops teams all need short-horizon forecasts to plan routes and reduce exposure. Public data exists (pollutants from DEFRA AURN and weather from the Met Office), but turning that into a **reliable, cloud-hosted prediction service** is the hard part.
 
@@ -16,7 +17,7 @@ Air quality varies block-by-block and hour-by-hour. People with respiratory cond
 - ✅ **PM₂.₅ model** (LightGBM) pulled from MLflow Model Registry at request time.
 - ✅ **Prediction logs** written as CSV (quick demo artifact you can plot later).
 
-> This is deliberately a thin, end-to-end vertical slice. It’s enough to review, demo live, and extend.
+> This is deliberately a thin, end-to-end vertical slice. It’s enough to review, demo live, and extend. This slice demonstrates PM₂.₅ only. The same pipeline extends easily to NO₂ and O₃; those are planned next steps.
 
 ---
 
@@ -112,6 +113,25 @@ flowchart LR
   linkStyle default stroke:#999,stroke-width:1.5px
 ```
 ---
+
+## How to demo (for reviewers)
+
+On a fresh EC2 (with Docker & Compose installed):
+
+1. `git clone https://github.com/dedenuola/airoute_mlops && cd airoute_mlops`
+2. `docker compose up -d postgres mlflow`
+3. `docker compose up -d webserver scheduler`
+4. `docker compose up -d --build api`
+5. Verify:
+   - `curl -s http://localhost:8000/health | jq .`
+   - `curl -s -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d '{"site_id":"CLL2","timestamp":"2025-08-01T10:00:00Z"}'`
+   - `tail -n +1 monitoring/predictions/preds_$(date -u +%F).csv`
+
+Screenshots to capture:  
+- `/health` response  
+- `/predict` JSON with `pm25_pred`  
+- Prediction CSV tail  
+
 
 ## Live demo (EC2)
 
@@ -233,7 +253,8 @@ curl -s http://localhost:8000/health | jq .
 ## Data & privacy
 
 - **DEFRA AURN** is open data; still keep raw drops out of Git.
-- **Met Office** datasets have specific license/usage terms. Store credentials in `.env` (gitignored) or in AWS runtime env. Do **not** commit raw downloads.
+- **Met Office** datasets have specific license/usage terms. Store credentials in `.env` (gitignored) or in AWS runtime env. Do **not** commit raw downloads. 
+⚠️ Raw Met Office downloads are not committed here due to licensing. Only transformed features and models are used.
 - Keep S3 buckets private; expose only the API and the needed web UIs via your IP.
 
 ---
