@@ -24,58 +24,92 @@ Air quality varies block-by-block and hour-by-hour. People with respiratory cond
 
 ```mermaid
 flowchart LR
-  %% ---------- Context / Security ----------
-  subgraph VPC_Security [VPC / Security]
-    IAM[IAM Instance Profile<br/>EC2-S3-Access-Role - mlops-airoute-deployment-policy]
-    SG[Security Group<br/>22, 8000, 8080, 5000 - restricted to your IP]
+  %% ========= LAYERS / GROUPS =========
+  subgraph AWS["AWS Account (eu-west-2)"]
+    direction LR
+
+    subgraph NET["VPC / Security"]
+      SG["Security Group\n(22, 8000, 8080, 5000)\nlimited to your IP"]
+      IAM["IAM Instance Profile\nEC2-S3-Access-Role\n(mlops-airoute-deployment-policy)"]
+    end
+
+    subgraph EC2["EC2 t3.large (Docker Compose)"]
+      direction TB
+
+      subgraph AFX["Airflow"]
+        AW["Webserver :8080"]
+        AS["Scheduler"]
+      end
+
+      subgraph API["FastAPI service :8000"]
+        HZ["/health\nsays ok"]
+        PR["/predict\nPM2.5"]
+      end
+
+      subgraph MLF["MLflow Tracking :5000"]
+        REG["Model Registry\nrouteaq_pm25 @ prod"]
+      end
+
+      subgraph DB["Postgres :5432"]
+        AFDB["airflow_meta DB"]
+        MLDB["mlflow backend DB"]
+      end
+    end
+
+    subgraph S3["S3 Buckets"]
+      S3F["routeaq-feast-offline\nsilver/joined/*.parquet"]
+      S3M["routeaq-mlflow-artifacts\nmlruns/…"]
+      S3R["(optional) monitoring/\nEvidently reports"]
+    end
   end
 
-  %% ---------- Compute ----------
-  subgraph EC2 [EC2 t3.large - Docker Compose]
-    %% Postgres (single container with two DBs)
-    subgraph PG [Postgres :5432]
-      P1[airflow_meta DB]
-      P2[mlflow backend DB]
-    end
-
-    %% Airflow
-    subgraph AF [Airflow]
-      AFW[Webserver :8080]
-      AFS[Scheduler]
-      AFW --> AFS
-    end
-
-    %% Feature storage (Feast)
-    S3[(S3 bucket<br/>routeaq-feast-offline/silver/joined/\*.parquet)]
-    FS[Feast FileSource<br/>S3 glob \*.parquet]
-    ONLINE[Online store - SQLite<br/>/opt/airflow/feature_repo/data/online_store]
-
-    %% Serving API
-    subgraph API [FastAPI service :8000]
-      H[GET /health<br/>returns ok]
-      P[POST /predict<br/>PM2.5]
-    end
-
-    %% MLflow tracking / registry
-    subgraph MLF [MLflow Tracking :5000]
-      MR[Model Registry<br/>routeaq_pm25 @ prod]
-    end
+  %% ========= OPTIONAL LOCAL DEV =========
+  subgraph DEV["Local Dev / Codespaces (optional)"]
+    TRAIN["Notebook / script\nlogs model to MLflow"]
   end
 
-  %% ---------- Local dev ----------
-  DEV[Local Dev / Codespaces<br/>notebooks & scripts]
+  %% ========= DATA FLOW =========
+  %% Ingestion & silver
+  ING["Airflow DAGs\nDEFRA AURN + Met Office"] -->|write| S3F
 
-  %% ---------- Data / control flows ----------
-  S3 --> FS --> ONLINE
-  AFS -->|materialize| ONLINE
-  API -->|get_online_features(site_id)| ONLINE
+  %% Feast
+  S3F -->|"Feast FileSource\n(date_time, site_id, features…)"| AFX
 
-  DEV -->|set_tracking_uri + log_model| MLF
-  MR -->|load model<br/>models:/routeaq_pm25@prod| API
+  %% Online features
+  AFX -->|"materialize\n(online store: SQLite)"| API
 
-  %% ---------- Security associations (dotted) ----------
+  %% Inference path
+  API -->|"get_online_features\n(site_id)"| AFX
+  API -->|"load model\n(models:/routeaq_pm25@prod)"| MLF
+  API -->|"predict JSON\n{site_id, timestamp} → pm25"| PR
+
+  %% Registry & artifacts
+  MLF -->|"artifacts\nmodels + params"| S3M
+  TRAIN -->|"mlflow.set_tracking_uri\nlog_model"| MLF
+
+  %% Monitoring (placeholder)
+  AFX -->|"daily task\nEvidently"| S3R
+
+  %% ========= OPERATIONS / SECURITY =========
   IAM -.-> EC2
   SG  -.-> EC2
+
+  %% ========= STYLES =========
+  classDef aws fill:#0b1f3a,stroke:#0b1f3a,color:#fff
+  classDef ec2 fill:#122c55,stroke:#0b1f3a,color:#fff
+  classDef svc fill:#173b75,stroke:#0b1f3a,color:#fff
+  classDef s3 fill:#1e5f30,stroke:#11401f,color:#fff
+  classDef db fill:#5b2a7c,stroke:#3a1b51,color:#fff
+  classDef note fill:#2a2a2a,stroke:#111,color:#ddd
+
+  class AWS,NET aws
+  class EC2 ec2
+  class AFX,API,MLF svc
+  class S3,S3F,S3M,S3R s3
+  class DB,AFDB,MLDB db
+  class SG,IAM,DEV,TRAIN note
+
+  linkStyle default stroke:#999,stroke-width:1.5px
 ```
 ---
 
