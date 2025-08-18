@@ -25,59 +25,57 @@ Air quality varies block-by-block and hour-by-hour. People with respiratory cond
 ```mermaid
 flowchart LR
   %% ---------- Context / Security ----------
-  subgraph vpcsec[“VPC / Security”]
-    iam[IAM Instance Profile<br/>EC2-S3-Access-Role<br/>(mlops-airoute-deployment-policy)]
-    sg[Security Group<br/>22, 8000, 8080, 5000<br/>(restricted to your IP)]
+  subgraph VPC_Security["VPC / Security"]
+    IAM[IAM Instance Profile<br/>EC2-S3-Access-Role<br/>(mlops-airoute-deployment-policy)]
+    SG[Security Group<br/>22, 8000, 8080, 5000<br/>(restricted to your IP)]
   end
 
   %% ---------- Compute ----------
-  subgraph ec2[EC2 t3.large (Docker Compose)]
-    %% Postgres
-    subgraph pg[Postgres :5432]
-      pg1[airflow_meta DB]
-      pg2[mlflow backend DB]
+  subgraph EC2["EC2 t3.large (Docker Compose)"]
+    %% Postgres (single container with two DBs)
+    subgraph PG["Postgres :5432"]
+      P1[airflow_meta DB]
+      P2[mlflow backend DB]
     end
 
     %% Airflow
-    subgraph af[Airflow]
-      afw[Webserver<br/>:8080]
-      afs[Scheduler]
-      afw --> afs
+    subgraph AF["Airflow"]
+      AFW[Webserver :8080]
+      AFS[Scheduler]
+      AFW --> AFS
     end
 
     %% Feature storage (Feast)
-    s3[S3 bucket<br/>routeaq-feast-offline<br/>silver/joined/*.parquet]
-    fs[Feast FileSource<br/>(S3 *.parquet glob)]
-    online[Online store (SQLite)<br/>/opt/airflow/feature_repo/data/online_store]
+    S3[(S3 bucket<br/>routeaq-feast-offline<br/>silver/joined/*.parquet)]
+    FS[Feast FileSource<br/>(S3 *.parquet glob)]
+    ONLINE[Online store (SQLite)<br/>/opt/airflow/feature_repo/data/online_store]
 
     %% Serving API
-    subgraph api[FastAPI service<br/>:8000]
-      h[/GET /health<br/>“ok”/]
-      p[/POST /predict<br/>PM2.5/]
+    subgraph API["FastAPI service :8000"]
+      H[GET /health<br/>returns ok]
+      P[POST /predict<br/>PM2.5]
     end
 
     %% MLflow tracking / registry
-    subgraph mlf[MLflow Tracking<br/>:5000]
-      mr[Model Registry<br/>routeaq_pm25 @ prod]
+    subgraph MLF["MLflow Tracking :5000"]
+      MR[Model Registry<br/>routeaq_pm25 @ prod]
     end
   end
 
   %% ---------- Local dev ----------
-  dev[Local Dev / Codespaces<br/>Notebook / script]
+  DEV[Local Dev / Codespaces<br/>notebooks & scripts]
 
   %% ---------- Data / control flows ----------
-  s3 --> fs
-  fs -->|feast apply / materialize| afs
-  afs --> online
-  api -->|get_online_features(site_id)| online
+  S3 --> FS --> ONLINE
+  AFS -->|materialize| ONLINE
+  API -->|get_online_features(site_id)| ONLINE
 
-  dev -->|mlflow.set_tracking_uri<br/>log_model| mlf
-  mr -->|load model<br/>models:/routeaq_pm25@prod| api
+  DEV -->|set_tracking_uri + log_model| MLF
+  MR -->|load model<br/>models:/routeaq_pm25@prod| API
 
   %% ---------- Security associations (dotted) ----------
-  iam -.-> ec2
-  sg  -.-> ec2
-
+  IAM -.-> EC2
+  SG  -.-> EC2
 ```
 ---
 
