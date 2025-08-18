@@ -24,28 +24,25 @@ Air quality varies block-by-block and hour-by-hour. People with respiratory cond
 
 ```mermaid
 flowchart LR
-  subgraph Ingestion & Silver
-    A[Airflow DAGs\n(DEFRA AURN hourly, Met Office)] --> B[Bronze]
-    B --> C[Transform -> Silver Parquet]
-    C --> D[Joined hourly features\ns3://routeaq-feast-offline/silver/joined/*.parquet]
+  %% Ingestion (Bronze -> Silver on S3)
+  subgraph ING[Ingestion & Silver]
+    A[Airflow DAGs<br/>DEFRA AURN hourly, Met Office] --> B[S3 Silver Parquet<br/>s3://routeaq-feast-offline/silver/...]
   end
 
-  subgraph Feature Store
-    D --> E[Feast FeatureView: aq_hourly\n(pm25_t_1, no2_t_1, o3_t_1, temp, wind, humidity)]
-    E --> F[(Feast Online Store\nSQLite in container)]
+  %% Features (Feast)
+  subgraph FEAST[Feature Store]
+    C[Feast FileSource<br/>(S3 *.parquet glob)] --> D[Online store (SQLite)<br/>/opt/airflow/feature_repo/data/online_store]
   end
 
-  subgraph Model Ops
-    G[Train LightGBM PM2.5] --> H[MLflow Run]
-    H --> I[MLflow Model Registry: routeaq_pm25\nBackend=Postgres | Artifacts=S3]
+  %% Model & Serving
+  subgraph SERVE[Model & Serving]
+    E[MLflow Registry<br/>routeaq_pm25 @ prod] --> F[FastAPI API<br/>/predict]
   end
 
-  subgraph Serving (FastAPI on 8000)
-    J[/POST /predict/] -->|load model| I
-    J -->|get_online_features| F
-    J -. fallback .-> D
-    J --> K[CSV prediction logs\n/monitoring/predictions/preds_YYYY-MM-DD.csv]
-  end
+  %% Edges between groups
+  B --> C
+  D --> F
+  E --> F
 ```
 
 ---
