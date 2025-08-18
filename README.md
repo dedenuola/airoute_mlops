@@ -254,6 +254,7 @@ curl -s http://localhost:8000/health | jq .
 
 - **DEFRA AURN** is open data; still keep raw drops out of Git.
 - **Met Office** datasets have specific license/usage terms. Store credentials in `.env` (gitignored) or in AWS runtime env. Do **not** commit raw downloads. 
+
 ⚠️ Raw Met Office downloads are not committed here due to licensing. Only transformed features and models are used.
 - Keep S3 buckets private; expose only the API and the needed web UIs via your IP.
 
