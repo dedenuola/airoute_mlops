@@ -16,4 +16,5 @@ uvicorn[standard]
 pandas
 requests
 python-dotenv
+s3fs
 boto3==1.33.13
