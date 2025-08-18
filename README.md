@@ -303,6 +303,7 @@ A: This demo serves PM₂.₅. NO₂ and O₃ are planned as immediate next incr
 
 Q: Is data privacy handled?
 A: Yes. Only aggregated, publicly available hourly data (DEFRA/Met Office) are used. No raw or private datasets are committed.
+
 ---
 ## License
 
