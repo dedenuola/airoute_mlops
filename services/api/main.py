@@ -6,31 +6,44 @@ from pathlib import Path
 import datetime as dt
 import pandas as pd
 
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-# Import the packages but don't construct heavy objects at import time
+# Heavy deps are imported but instantiated lazily
 import mlflow
 import mlflow.pyfunc
 from feast import FeatureStore
 
+# Fallback readers (pyarrow uses s3fs transparently)
+import pyarrow.dataset as ds
+import pyarrow.compute as pc
+
 # ---------- config ----------
-ROUTEAQ_JOINED_PATH   = os.getenv("ROUTEAQ_JOINED_PATH", "s3://routeaq-feast-offline/silver/joined/*.parquet")
+ROUTEAQ_JOINED_PATH = os.getenv(
+    "ROUTEAQ_JOINED_PATH",
+    "s3://routeaq-feast-offline/silver/joined/*.parquet",
+)
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
-MODEL_URI           = os.getenv("MODEL_URI", "models:/routeaq_pm25/Production")
-FEAST_REPO_PATH     = os.getenv("FEAST_REPO_PATH", "/app/feature_repo")
-PRED_LOG_DIR        = Path(os.getenv("PRED_LOG_DIR", "/app/monitoring/predictions"))
+MODEL_URI = os.getenv("MODEL_URI", "models:/routeaq_pm25/Production")
+FEAST_REPO_PATH = os.getenv("FEAST_REPO_PATH", "/app/feature_repo")
+PRED_LOG_DIR = Path(os.getenv("PRED_LOG_DIR", "/app/monitoring/predictions"))
+
 FEATURE_LIST = ["pm25_t_1", "no2_t_1", "o3_t_1", "temp", "wind", "humidity"]
 
 # ---------- logging ----------
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 logger = logging.getLogger("routeaq.api")
 
-# Ensure the predictions dir exists (this is safe)
+# Ensure the predictions dir exists
 PRED_LOG_DIR.mkdir(parents=True, exist_ok=True)
-logger.info("[startup] Prediction logs directory: %s (exists=%s, writable=%s)",
-            PRED_LOG_DIR, PRED_LOG_DIR.exists(), os.access(PRED_LOG_DIR, os.W_OK))
+logger.info(
+    "[startup] Prediction logs directory: %s (exists=%s, writable=%s)",
+    PRED_LOG_DIR,
+    PRED_LOG_DIR.exists(),
+    os.access(PRED_LOG_DIR, os.W_OK),
+)
 
 app = FastAPI(title="RouteAQ PM2.5 Predictor")
 
@@ -38,28 +51,14 @@ app = FastAPI(title="RouteAQ PM2.5 Predictor")
 app.state.store = None
 app.state.model = None
 
-# ---------- small helpers ----------
-def _normalize_s3_path(p: str) -> str:
-    """Add s3:// prefix if someone passed 'bucket/...' by mistake."""
-    if p and not p.startswith(("s3://", "file://", "/")) and ":" not in p[:5]:
-        return "s3://" + p
-    return p
 
-def _quick_parquet_probe(path: str) -> list:
-    """Return up to 3 matching files on S3 for debugging."""
-    try:
-        import s3fs
-        fs = s3fs.S3FileSystem()
-        return fs.glob(path)[:3]
-    except Exception:
-        return []
-# ---------- lazy getters ----------
-
+# ---------- helpers ----------
 def get_store() -> FeatureStore:
     if app.state.store is None:
         logger.info("[init] Constructing Feast FeatureStore at %s", FEAST_REPO_PATH)
         app.state.store = FeatureStore(repo_path=FEAST_REPO_PATH)
     return app.state.store
+
 
 def get_model():
     if app.state.model is None:
@@ -67,6 +66,7 @@ def get_model():
         mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
         app.state.model = mlflow.pyfunc.load_model(MODEL_URI)
     return app.state.model
+
 
 def log_prediction(site_id: str, ts_iso: str, y_pred: float):
     today = dt.datetime.utcnow().strftime("%Y-%m-%d")
@@ -79,54 +79,72 @@ def log_prediction(site_id: str, ts_iso: str, y_pred: float):
             w.writerow(header)
         w.writerow([ts_iso, site_id, y_pred])
 
-# # ---------- FALLBACK: read features directly from S3 parquet ----------
-# def read_latest_row_from_s3(site_id: str) -> pd.DataFrame:
-#     """
-#     Fallback path when Feast online store is unavailable or incomplete.
-#     Reads the latest joined row for the site from S3 parquet and returns a
-#     single-row DataFrame with FEATURE_LIST columns in the correct order.
-#     """
-#     cols = ["site_id", "date_time"] + FEATURE_LIST
-#     try:
-#         df = pd.read_parquet(ROUTEAQ_JOINED_PATH, columns=cols)
-#     except Exception as e:
-#         logger.exception("[fallback] Failed to read parquet from %s", ROUTEAQ_JOINED_PATH)
-#         raise HTTPException(status_code=503, detail=f"Parquet read failed: {e}")
 
-#     df = df[df["site_id"] == site_id].copy()
-#     if df.empty:
-#         raise HTTPException(status_code=404, detail=f"No rows for site {site_id} in {ROUTEAQ_JOINED_PATH}")
+def _normalize_s3_path(p: str) -> str:
+    # pyarrow.dataset accepts "s3://bucket/prefix/*.parquet"
+    # If someone accidentally removed the scheme, fix it.
+    if p.startswith("s3://"):
+        return p
+    if p and ("/" in p) and (":" not in p.split("/", 1)[0]):
+        return "s3://" + p
+    return p
 
-#     # Ensure timestamp is usable and sort
-#     df["date_time"] = pd.to_datetime(df["date_time"], utc=True, errors="coerce")
-#     df = df.dropna(subset=["date_time"])
-#     if df.empty:
-#         raise HTTPException(status_code=404, detail=f"No valid timestamps for site {site_id}")
 
-#     latest = df.sort_values("date_time").iloc[-1]
-#     row = {k: (float(latest[k]) if pd.notnull(latest[k]) else 0.0) for k in FEATURE_LIST}
-#     X = pd.DataFrame([row], columns=FEATURE_LIST)
-#     logger.info("[fallback] Using S3 parquet features for site_id=%s at %s", site_id, latest["date_time"])
-#     return X
+def _load_features_from_parquet(site_id: str, ts_iso: str) -> dict:
+    """
+    Fallback path: read from S3 parquet and return the most recent row
+    with date_time <= requested timestamp, for the numeric FEATURE_LIST columns.
+    Assumes columns: site_id (str), date_time (timestamp), and FEATURE_LIST.
+    """
+    try:
+        path = _normalize_s3_path(ROUTEAQ_JOINED_PATH)
+        dataset = ds.dataset(path, format="parquet")  # uses s3fs automatically
 
-#------------ Schema for request and response ------------
+        # Parse incoming timestamp as UTC
+        ts = pd.to_datetime(ts_iso, utc=True)
+
+        # Restrict to needed columns
+        cols = ["site_id", "date_time"] + FEATURE_LIST
+
+        # Filter: exact site + date_time <= ts
+        tbl = dataset.to_table(
+            columns=cols,
+            filter=(pc.field("site_id") == site_id) & (pc.field("date_time") <= pc.scalar(ts.to_pydatetime())),
+        )
+
+        if tbl.num_rows == 0:
+            raise ValueError(f"No parquet rows for site_id={site_id} up to {ts_iso}")
+
+        df = tbl.to_pandas()
+        df["date_time"] = pd.to_datetime(df["date_time"], utc=True)
+        df = df.sort_values("date_time")
+        last = df.iloc[-1]
+
+        row = {k: float(last[k]) for k in FEATURE_LIST}
+        logger.info("[fallback] parquet row loaded for %s @ %s -> %s", site_id, ts_iso, row)
+        return row
+
+    except Exception as e:
+        logger.exception("[fallback] parquet load failed")
+        raise HTTPException(status_code=503, detail=f"Parquet read failed: {e}")
+
+
+# ---------- API ----------
 class PredictRequest(BaseModel):
     site_id: str
     timestamp: str  # ISO8601 string
 
-# ---------- endpoints ----------
+
 @app.get("/health")
 def health():
-    joined = _normalize_s3_path(ROUTEAQ_JOINED_PATH)
     return {
         "status": "ok",
         "feast_repo": FEAST_REPO_PATH,
         "pred_dir": str(PRED_LOG_DIR),
         "pred_dir_exists": PRED_LOG_DIR.exists(),
         "pred_dir_writable": os.access(PRED_LOG_DIR, os.W_OK),
-        "joined_path": joined,
-        "s3_probe": _quick_parquet_probe(joined),
     }
+
 
 @app.post("/predict")
 def predict(req: PredictRequest):
@@ -134,45 +152,59 @@ def predict(req: PredictRequest):
     try:
         store = get_store()
     except Exception as e:
-        logger.exception("[error] Failed to init Feast, will still allow fallback")
+        logger.exception("[error] Failed to init Feast")
         raise HTTPException(status_code=503, detail=f"Feast init failed: {e}")
+
     try:
         model = get_model()
     except Exception as e:
         logger.exception("[error] Failed to load MLflow model")
         raise HTTPException(status_code=503, detail=f"Model load failed: {e}")
 
-# Online features for the site (plain column names)
+    # 1) Request features with plain column names (no view prefix)
     feature_refs = [f"aq_hourly:{f}" for f in FEATURE_LIST]
     try:
         online_feats = store.get_online_features(
             features=feature_refs,
             entity_rows=[{"site_id": req.site_id}],
-            full_feature_names=False,  # returns pm25_t_1, not aq_hourly:pm25_t_1
+            full_feature_names=False,  # return 'pm25_t_1', not 'aq_hourly:pm25_t_1'
         ).to_dict()
     except Exception as e:
         logger.exception("[error] get_online_features failed")
         raise HTTPException(status_code=503, detail=f"Feast online features failed: {e}")
 
-    # Build a single-row dataframe with ONLY numeric model columns in order
+    # 2) Build a single-row dataframe in the model's column order.
     try:
-        row = {k: (online_feats[k][0] if isinstance(online_feats[k], list) else online_feats[k])
-               for k in FEATURE_LIST}
+        row = {k: (online_feats[k][0] if isinstance(online_feats[k], list) else online_feats[k]) for k in FEATURE_LIST}
+
+        # If Feast returned any None, fall back to parquet
+        if any(v is None for v in row.values()):
+            logger.warning(
+                "[predict] Feast returned None(s); falling back to parquet for %s @ %s",
+                req.site_id,
+                req.timestamp,
+            )
+            row = _load_features_from_parquet(req.site_id, req.timestamp)
+
         X = pd.DataFrame([row], columns=FEATURE_LIST).astype(float)
     except KeyError as e:
         missing = str(e).strip("'")
         raise HTTPException(status_code=400, detail=f"Missing feature: {missing}")
+    except HTTPException:
+        # already raised with a good message from fallback
+        raise
     except Exception as e:
         logger.exception("[error] building model input failed")
         raise HTTPException(status_code=503, detail=f"Building model input failed: {e}")
-    # ---------- Predict ----------
+
+    # 3) Predict
     try:
         pred = float(model.predict(X)[0])
     except Exception as e:
         logger.exception("[error] model.predict failed")
         raise HTTPException(status_code=503, detail=f"Prediction failed: {e}")
 
-    # ---------- Best-effort logging ----------
+    # 4) Best-effort logging (doesn't fail the request)
     try:
         log_prediction(req.site_id, req.timestamp, pred)
     except Exception as e:
