@@ -26,12 +26,12 @@ Air quality varies block-by-block and hour-by-hour. People with respiratory cond
 flowchart LR
   %% ---------- Context / Security ----------
   subgraph VPC_Security [VPC / Security]
-    IAM[IAM Instance Profile<br/>EC2-S3-Access-Role – mlops-airoute-deployment-policy]
-    SG[Security Group<br/>22, 8000, 8080, 5000 – restricted to your IP]
+    IAM[IAM Instance Profile<br/>EC2-S3-Access-Role - mlops-airoute-deployment-policy]
+    SG[Security Group<br/>22, 8000, 8080, 5000 - restricted to your IP]
   end
 
   %% ---------- Compute ----------
-  subgraph EC2 [EC2 t3.large – Docker Compose]
+  subgraph EC2 [EC2 t3.large - Docker Compose]
     %% Postgres (single container with two DBs)
     subgraph PG [Postgres :5432]
       P1[airflow_meta DB]
@@ -46,9 +46,9 @@ flowchart LR
     end
 
     %% Feature storage (Feast)
-    S3[(S3 bucket<br/>routeaq-feast-offline/silver/joined/*.parquet)]
-    FS[Feast FileSource<br/>(S3 *.parquet glob)]
-    ONLINE[Online store – SQLite<br/>/opt/airflow/feature_repo/data/online_store]
+    S3[(S3 bucket<br/>routeaq-feast-offline/silver/joined/\*.parquet)]
+    FS[Feast FileSource<br/>S3 glob \*.parquet]
+    ONLINE[Online store - SQLite<br/>/opt/airflow/feature_repo/data/online_store]
 
     %% Serving API
     subgraph API [FastAPI service :8000]
