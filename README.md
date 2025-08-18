@@ -286,7 +286,24 @@ curl -s http://localhost:8000/health | jq .
   Healthcheck hits `/api/2.0/mlflow/experiments/list`. Ensure Postgres is up and `--default-artifact-root` points to your S3 bucket.
 
 ---
+FAQ
 
+Q: Does this predict into the future (e.g. next year)?
+A: No. The model predicts only for timestamps that already have features ingested (weather + lagged pollutants). It is not a forecasting system. When the Airflow DAG is actively running and materializing features, the API will return valid predictions.
+
+Q: Why did my request return an error?
+A: Most likely the features for that site_id/timestamp weren’t available. Check that:
+
+/health returns ok
+
+The S3 parquet path or Feast materialization includes your date
+
+Q: What pollutants are supported?
+A: This demo serves PM₂.₅. NO₂ and O₃ are planned as immediate next increments.
+
+Q: Is data privacy handled?
+A: Yes. Only aggregated, publicly available hourly data (DEFRA/Met Office) are used. No raw or private datasets are committed.
+---
 ## License
 
 MIT
