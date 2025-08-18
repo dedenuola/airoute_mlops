@@ -25,6 +25,7 @@ JOINED_PATH = os.getenv(
 src = FileSource(
     path=JOINED_PATH,
     timestamp_field="date_time",
+    file_format=ParquetFormat(),
 )
 
 # 3) Feature view definition
