@@ -24,92 +24,60 @@ Air quality varies block-by-block and hour-by-hour. People with respiratory cond
 
 ```mermaid
 flowchart LR
-  %% ========= LAYERS / GROUPS =========
-  subgraph AWS["AWS Account (eu-west-2)"]
-    direction LR
+  %% ---------- Context / Security ----------
+  subgraph vpcsec[“VPC / Security”]
+    iam[IAM Instance Profile<br/>EC2-S3-Access-Role<br/>(mlops-airoute-deployment-policy)]
+    sg[Security Group<br/>22, 8000, 8080, 5000<br/>(restricted to your IP)]
+  end
 
-    subgraph NET["VPC / Security"]
-      SG["Security Group\n(22, 8000, 8080, 5000)\nlimited to your IP"]
-      IAM["IAM Instance Profile\nEC2-S3-Access-Role\n(mlops-airoute-deployment-policy)"]
+  %% ---------- Compute ----------
+  subgraph ec2[EC2 t3.large (Docker Compose)]
+    %% Postgres
+    subgraph pg[Postgres :5432]
+      pg1[airflow_meta DB]
+      pg2[mlflow backend DB]
     end
 
-    subgraph EC2["EC2 t3.large (Docker Compose)"]
-      direction TB
-
-      subgraph AFX["Airflow"]
-        AW["Webserver :8080"]
-        AS["Scheduler"]
-      end
-
-      subgraph API["FastAPI service :8000"]
-        HZ["/health\nsays ok"]
-        PR["/predict\nPM2.5"]
-      end
-
-      subgraph MLF["MLflow Tracking :5000"]
-        REG["Model Registry\nrouteaq_pm25 @ prod"]
-      end
-
-      subgraph DB["Postgres :5432"]
-        AFDB["airflow_meta DB"]
-        MLDB["mlflow backend DB"]
-      end
+    %% Airflow
+    subgraph af[Airflow]
+      afw[Webserver<br/>:8080]
+      afs[Scheduler]
+      afw --> afs
     end
 
-    subgraph S3["S3 Buckets"]
-      S3F["routeaq-feast-offline\nsilver/joined/*.parquet"]
-      S3M["routeaq-mlflow-artifacts\nmlruns/…"]
-      S3R["(optional) monitoring/\nEvidently reports"]
+    %% Feature storage (Feast)
+    s3[S3 bucket<br/>routeaq-feast-offline<br/>silver/joined/*.parquet]
+    fs[Feast FileSource<br/>(S3 *.parquet glob)]
+    online[Online store (SQLite)<br/>/opt/airflow/feature_repo/data/online_store]
+
+    %% Serving API
+    subgraph api[FastAPI service<br/>:8000]
+      h[/GET /health<br/>“ok”/]
+      p[/POST /predict<br/>PM2.5/]
+    end
+
+    %% MLflow tracking / registry
+    subgraph mlf[MLflow Tracking<br/>:5000]
+      mr[Model Registry<br/>routeaq_pm25 @ prod]
     end
   end
 
-  %% ========= OPTIONAL LOCAL DEV =========
-  subgraph DEV["Local Dev / Codespaces (optional)"]
-    TRAIN["Notebook / script\nlogs model to MLflow"]
-  end
+  %% ---------- Local dev ----------
+  dev[Local Dev / Codespaces<br/>Notebook / script]
 
-  %% ========= DATA FLOW =========
-  %% Ingestion & silver
-  ING["Airflow DAGs\nDEFRA AURN + Met Office"] -->|write| S3F
+  %% ---------- Data / control flows ----------
+  s3 --> fs
+  fs -->|feast apply / materialize| afs
+  afs --> online
+  api -->|get_online_features(site_id)| online
 
-  %% Feast
-  S3F -->|"Feast FileSource\n(date_time, site_id, features…)"| AFX
+  dev -->|mlflow.set_tracking_uri<br/>log_model| mlf
+  mr -->|load model<br/>models:/routeaq_pm25@prod| api
 
-  %% Online features
-  AFX -->|"materialize\n(online store: SQLite)"| API
+  %% ---------- Security associations (dotted) ----------
+  iam -.-> ec2
+  sg  -.-> ec2
 
-  %% Inference path
-  API -->|"get_online_features\n(site_id)"| AFX
-  API -->|"load model\n(models:/routeaq_pm25@prod)"| MLF
-  API -->|"predict JSON\n{site_id, timestamp} → pm25"| PR
-
-  %% Registry & artifacts
-  MLF -->|"artifacts\nmodels + params"| S3M
-  TRAIN -->|"mlflow.set_tracking_uri\nlog_model"| MLF
-
-  %% Monitoring (placeholder)
-  AFX -->|"daily task\nEvidently"| S3R
-
-  %% ========= OPERATIONS / SECURITY =========
-  IAM -.-> EC2
-  SG  -.-> EC2
-
-  %% ========= STYLES =========
-  classDef aws fill:#0b1f3a,stroke:#0b1f3a,color:#fff
-  classDef ec2 fill:#122c55,stroke:#0b1f3a,color:#fff
-  classDef svc fill:#173b75,stroke:#0b1f3a,color:#fff
-  classDef s3 fill:#1e5f30,stroke:#11401f,color:#fff
-  classDef db fill:#5b2a7c,stroke:#3a1b51,color:#fff
-  classDef note fill:#2a2a2a,stroke:#111,color:#ddd
-
-  class AWS,NET aws
-  class EC2 ec2
-  class AFX,API,MLF svc
-  class S3,S3F,S3M,S3R s3
-  class DB,AFDB,MLDB db
-  class SG,IAM,DEV,TRAIN note
-
-  linkStyle default stroke:#999,stroke-width:1.5px
 ```
 
 ---
