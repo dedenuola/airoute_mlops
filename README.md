@@ -148,7 +148,7 @@ API_BASE=http://localhost:8000 tests/smoke_test.sh
 }
 PASS
 Screenshot: successful smoke test run.
-![alt text](<images/Screenshot 2025-08-19 113444.png>)
+![Smoke test run](images/Screenshot_2025-08-19_113444.png)
 
 Each prediction is also logged automatically under monitoring/predictions/:
 
@@ -157,7 +157,7 @@ timestamp,site_id,pm25_pred
 2025-08-01T10:00:00Z,CLL2,5.945971528654358
 
 Screenshot: prediction logged to monitoring folder.
-![alt text](<images/Screenshot 2025-08-19 114713.png>)
+![Prediction log](images/Screenshot_2025-08-19_114713.png)
 
 ## Live demo (EC2)
 
