@@ -132,6 +132,32 @@ Screenshots to capture:
 - `/predict` JSON with `pm25_pred`  
 - Prediction CSV tail  
 
+## Demo Output
+
+When running the smoke test, the API returns a valid prediction and exits cleanly:
+
+```bash
+API_BASE=http://localhost:8000 tests/smoke_test.sh
+-> /health
+-> /predict
+{
+  "site_id": "CLL2",
+  "timestamp": "2025-08-01T10:00:00Z",
+  "pm25_pred": 5.945971528654358,
+  "source": "parquet"
+}
+PASS
+Screenshot: successful smoke test run.
+![alt text](<images/Screenshot 2025-08-19 113444.png>)
+
+Each prediction is also logged automatically under monitoring/predictions/:
+
+tail -n 5 monitoring/predictions/preds_$(date +%F).csv
+timestamp,site_id,pm25_pred
+2025-08-01T10:00:00Z,CLL2,5.945971528654358
+
+Screenshot: prediction logged to monitoring folder.
+![alt text](<images/Screenshot 2025-08-19 114713.png>)
 
 ## Live demo (EC2)
 
