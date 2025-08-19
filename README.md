@@ -147,15 +147,17 @@ API_BASE=http://localhost:8000 tests/smoke_test.sh
   "source": "parquet"
 }
 PASS
+```
+
 Screenshot: successful smoke test run.  
 ![Smoke test run](images/smoketest.png)
 
 Each prediction is also logged automatically under monitoring/predictions/:  
-
-tail -n 5 monitoring/predictions/preds_$(date +%F).csv  
-timestamp,site_id,pm25_pred  
-2025-08-01T10:00:00Z,CLL2,5.945971528654358  
-
+```bash
+tail -n 5 monitoring/predictions/preds_$(date +%F).csv
+timestamp,site_id,pm25_pred
+2025-08-01T10:00:00Z,CLL2,5.945971528654358
+``` 
 Screenshot: prediction logged to monitoring folder.  
 ![Prediction log](images/predictionlog.png)
 
